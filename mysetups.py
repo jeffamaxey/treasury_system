@@ -62,7 +62,7 @@ print('Rate index created')
 # -------------------------------------------------------------------------------------
 
 c = CurrencyRates()
-for i in range(50):
+for _ in range(50):
     if d.weekday() < 500:
         xr = 1.12 * exp((random()-0.5)*0.5/sqrt(365))
         #FxSpotRateQuote.objects.get_or_create( ref_date=d, ccy_pair=eurusd, defaults={'rate': float(c.get_rate('EUR', 'USD', d))} )

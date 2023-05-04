@@ -141,10 +141,7 @@ class Ccy(models.Model):
         return self.code
 
     def calendar(self):
-        if self.cal:
-            return self.cal.calendar()
-        else:
-            return ql.NullCalendar()
+        return self.cal.calendar() if self.cal else ql.NullCalendar()
 
 
 class CcyPair(models.Model):
@@ -228,7 +225,7 @@ class FxSpotRateQuote(models.Model):
 
     def forward_rate(self, maturity) -> float:
         sd = self.spot_date()
-        if self.rts == None or self.qts == None:
+        if self.rts is None or self.qts is None:
             self.rts, self.qts = self.ccy_pair.fx_curves(self.ref_date)
         return self.quote.value() / self.rts.discount(
             qlDate(maturity)) * self.rts.discount(sd) * self.qts.discount(
@@ -276,10 +273,9 @@ class InterestRateQuote(models.Model):
         if self.helper_obj:
             return self.helper_obj
 
-        mkt = kwargs.get('mktdataset')
-        if mkt:
+        if mkt := kwargs.get('mktdataset'):
             self.mktdataset = mkt
-        elif self.mktdataset == None:
+        elif self.mktdataset is None:
             self.mktdataset = MktDataSet(self.ref_date)
 
         q = ql.QuoteHandle(ql.SimpleQuote(float(self.rate)))
@@ -305,8 +301,7 @@ class InterestRateQuote(models.Model):
         elif self.instrument == "SWAP":
             if self.ccy.code == "USD":  # https://quant.stackexchange.com/questions/32345/quantlib-python-dual-curve-bootstrapping-example
                 swapIndex = ql.UsdLiborSwapIsdaFixAm(tenor_)
-                ref_curve = kwargs.get('ref_curve')  # is a handle
-                if ref_curve:
+                if ref_curve := kwargs.get('ref_curve'):
                     return ql.SwapRateHelper(q, swapIndex, 0, ql.Period(),
                                              ref_curve), q
                 else:
@@ -317,21 +312,20 @@ class InterestRateQuote(models.Model):
                     return ql.DepositRateHelper(q, tenor_, 0, ql.TARGET(),
                                                 ql.Following, False,
                                                 ql.Actual360()), q
-                else:
-                    overnight_index = ql.FedFunds()
-                    settlementDays = 2
-                    self.helper_obj = ql.OISRateHelper(
-                        2,
-                        tenor_,
-                        q,
-                        overnight_index,
-                        paymentLag=0,
-                        paymentCalendar=ql.UnitedStates()), q
-                    return self.helper_obj
+                overnight_index = ql.FedFunds()
+                settlementDays = 2
+                self.helper_obj = ql.OISRateHelper(
+                    2,
+                    tenor_,
+                    q,
+                    overnight_index,
+                    paymentLag=0,
+                    paymentCalendar=ql.UnitedStates()), q
+                return self.helper_obj
         elif self.instrument == "FXSW":  # ql.FxSwapRateHelper(fwdPoint, spotFx, tenor, fixingDays, calendar, convention, endOfMonth, isFxBaseCurrencyCollateralCurrency, collateralCurve)
             if self.ccy_pair:
                 ref_curve = kwargs.get('ref_curve')  # is a handle, from kwargs
-                fixing_days = self.ccy_pair.fixing_days if fixing_days == None else fixing_days
+                fixing_days = self.ccy_pair.fixing_days if fixing_days is None else fixing_days
                 s = self.mktdataset.get_fxspot(self.ccy_pair.name)
                 return ql.FxSwapRateHelper(q, s.handle(), tenor_, fixing_days,
                                            self.ccy_pair.calendar(),
@@ -381,7 +375,7 @@ class IRTermStructure(models.Model):
         if self.yts:
             return self.yts
 
-        if self.mktdataset == None:
+        if self.mktdataset is None:
             self.mktdataset = MktDataSet(self.ref_date)
 
         ref_curve_ = None
@@ -489,7 +483,7 @@ class FXVolatility(models.Model):
                                                       self.maturity)
 
             for i, delta_type in enumerate(delta_types):
-                if not delta_type == ql.DeltaVolQuote.Spot:
+                if delta_type != ql.DeltaVolQuote.Spot:
                     stdDev = math.sqrt(self.t) * smile_section[i]
                     calc = ql.BlackDeltaCalculator(ql.Option.Call, delta_type,
                                                    self.s0, self.rDcf,
@@ -562,7 +556,7 @@ class FXVolatility(models.Model):
         surf_vol, surf_delta, surf_delta_type, maturities = self.surface_matrix(
         )
 
-        if self.mktdataset == None:
+        if self.mktdataset is None:
             self.mktdataset = MktDataSet(self.ref_date)
 
         solver = ql.Brent()
@@ -579,23 +573,20 @@ class FXVolatility(models.Model):
             surf_delta_type = [surf_delta_type[i_] for i_ in ii if i_]
             maturities = [maturities[i_] for i_ in ii if i_]"""
 
-        if self.spot == None:
+        if self.spot is None:
             self.spot = self.mktdataset.get_fxspot(self.ccy_pair.name)
         s0 = self.spot.today_rate()
 
-        if self.rts == None:  # yts is the slowest part
+        if self.rts is None:  # yts is the slowest part
             ccy = self.ccy_pair.quote_ccy.code
             cvname = self.mktdataset.get_fxyts_name(ccy)
             self.rts = self.mktdataset.get_yts(ccy, cvname)
-        if self.qts == None:
+        if self.qts is None:
             ccy = self.ccy_pair.base_ccy.code
             cvname = self.mktdataset.get_fxyts_name(ccy)
             self.qts = self.mktdataset.get_yts(ccy, cvname)
 
-        spread = 0.
-        if kwargs.get('spread'):
-            spread = kwargs.get('spread')
-
+        spread = kwargs.get('spread') if kwargs.get('spread') else 0.
         for i, smile in enumerate(surf_vol):
             mat = qlDate(maturities[i])
             target = self.TargetFun(self.ref_date, s0, self.rts.discount(mat),
@@ -670,15 +661,16 @@ class FXOManager(models.Manager):
 
     def create_fxo(self, trade_date, maturity_date, ccy_pair, strike_price,
                    type, cp, notional_1):
-        fxo = self.create(trade_date=trade_date,
-                          maturity_date=maturity_date,
-                          ccy_pair=ccy_pair,
-                          strike_price=strike_price,
-                          type=type,
-                          cp=cp,
-                          notional_1=notional_1,
-                          notional_2=notional_1 * strike_price)
-        return fxo
+        return self.create(
+            trade_date=trade_date,
+            maturity_date=maturity_date,
+            ccy_pair=ccy_pair,
+            strike_price=strike_price,
+            type=type,
+            cp=cp,
+            notional_1=notional_1,
+            notional_2=notional_1 * strike_price,
+        )
 
 
 class Portfolio(models.Model):
@@ -890,27 +882,24 @@ class FXO(Trade):
         return f"FXO ID: {self.id}, {self.ccy_pair}, Notional={self.notional_1:.0f}, K={self.strike_price}, {self.cp}"
 
     def save(self, *args, **kwargs):
-        if self.notional_2 == None:
+        if self.notional_2 is None:
             self.notional_2 = self.notional_1 * self.strike_price
-        if self.exercise_type == "EUR":
+        if self.exercise_type == "AME":
+            if self.exercise_start is None:
+                self.exercise_start = self.trade_date
+            if self.exercise_end is None:
+                self.exercise_end = self.maturity_date
+        elif self.exercise_type == "EUR":
             self.exercise_start = None
             self.exercise_end = None
-        elif self.exercise_type == "AME":
-            if self.exercise_start == None:
-                self.exercise_start = self.trade_date
-            if self.exercise_end == None:
-                self.exercise_end = self.maturity_date
         super().save(*args, **kwargs)
 
     def instrument(self):
         cp = ql.Option.Call if self.cp == "C" else ql.Option.Put
-        if self.payoff_type == 'PLA':
+        if self.payoff_type == 'PLA' or self.payoff_type != 'DIG':
             payoff = ql.PlainVanillaPayoff(cp, self.strike_price)
-        elif self.payoff_type == 'DIG':
-            payoff = ql.CashOrNothingPayoff(cp, self.strike_price, 1.0)
         else:
-            payoff = ql.PlainVanillaPayoff(cp, self.strike_price)
-
+            payoff = ql.CashOrNothingPayoff(cp, self.strike_price, 1.0)
         if self.exercise_type == 'EUR':
             exercise = ql.EuropeanExercise(qlDate(self.maturity_date))
         elif self.exercise_type == 'AME':
@@ -959,10 +948,12 @@ class FXO(Trade):
             mkt = self.mktdataset.fxo_mkt_data(self.ccy_pair.name)
             qts = ql.YieldTermStructureHandle(mkt.get('qts'))
             rts = ql.YieldTermStructureHandle(mkt.get('rts'))
-            process = ql.BlackScholesMertonProcess(
-                mkt.get('spot').spot0_handle(), qts, rts,
-                mkt.get('vol').handle(self.strike_price))
-            return process
+            return ql.BlackScholesMertonProcess(
+                mkt.get('spot').spot0_handle(),
+                qts,
+                rts,
+                mkt.get('vol').handle(self.strike_price),
+            )
 
     def make_pricing_engine(self):
         if self.mktdataset:
@@ -985,9 +976,9 @@ class FXO(Trade):
         return self.inst.NPV() * self.notional_1 * side
 
     def delta(self):
-        side = 1. if self.buy_sell == "B" else -1.
         if isinstance(self.inst, ql.DoubleBarrierOption):
             return 0.
+        side = 1. if self.buy_sell == "B" else -1.
         return self.inst.delta() * self.notional_1 * side
 
     def gamma(self):
@@ -1171,8 +1162,6 @@ class SwapLeg(models.Model):
                                       gearing=[1],
                                       spread=self.spread,
                                       TelescopicValueDates=True)
-            else:
-                pass  # other floating leg
         else:  # self.index==None
             leg = ql.FixedRateLeg(sch, QL_DAY_COUNTER[self.day_counter],
                                   [self.notional], [self.fixed_rate * 0.01])
@@ -1222,18 +1211,18 @@ class MktDataSet:
     def __init__(self, date, **kwargs) -> None:
         """ input kwargs for manually initialize MktDataSet """
         self.date = str2date(date)
-        self.ccy_pairs = dict()  # Ccypair
-        self.fxytss = dict()
-        self.ytss = dict()
-        self.spots = dict()  # FxSpotRateQuote
-        self.fxvols = dict()
+        self.ccy_pairs = {}
+        self.fxytss = {}
+        self.ytss = {}
+        self.spots = {}
+        self.fxvols = {}
         if kwargs:
             self.add_ccy_pair_with_args(**kwargs)
 
     def get_yts(self, ccy: str, name: str):
-        ccy_cvname = ccy + " " + name
+        ccy_cvname = f"{ccy} {name}"
         yts = self.ytss.get(ccy_cvname)
-        if yts == None:
+        if yts is None:
             yts_obj = IRTermStructure.objects.get(name=name,
                                                   ccy=ccy,
                                                   ref_date=self.date)
@@ -1244,25 +1233,25 @@ class MktDataSet:
 
     def get_fxyts_name(self, ccy: str) -> str:
         name = self.fxytss.get(ccy)
-        if name == None:
+        if name is None:
             yts = Ccy.objects.get(code=ccy).fx_curve.get(ref_date=self.date)
             yts.link_mktdataset(self)
             name = yts.name
             self.fxytss[ccy] = name
-            self.ytss[ccy + " " + name] = yts.term_structure()
+            self.ytss[f"{ccy} " + name] = yts.term_structure()
         return name
 
     def get_fxspot(self, ccy_pair: str) -> FxSpotRateQuote:
         try:
             cp = self.ccy_pairs.get(ccy_pair)
 
-            if cp == None:
+            if cp is None:
                 cp = CcyPair.objects.get(name=ccy_pair)
                 self.ccy_pairs[ccy_pair] = cp
 
             fxs = self.spots.get(ccy_pair)
 
-            if fxs == None:
+            if fxs is None:
                 fxs = FxSpotRateQuote.objects.get(ccy_pair=ccy_pair,
                                                   ref_date=self.date)
                 self.spots[ccy_pair] = fxs
@@ -1277,13 +1266,13 @@ class MktDataSet:
     def get_fxvol(self, ccy_pair: str) -> FXVolatility:
         cp = self.ccy_pairs.get(ccy_pair)
 
-        if cp == None:
+        if cp is None:
             cp = CcyPair.objects.get(name=ccy_pair)
             self.ccy_pairs[ccy_pair] = cp
 
         fxvol = self.fxvols.get(ccy_pair)
 
-        if fxvol == None:
+        if fxvol is None:
             fxvol = FXVolatility.objects.get(ccy_pair=ccy_pair,
                                              ref_date=self.date)
             fxvol.link_mktdataset(self)
@@ -1299,7 +1288,7 @@ class MktDataSet:
         ccy1, ccy2 = ccy_pair.split('/')
         cp = self.ccy_pairs.get(ccy_pair)
 
-        if cp == None:
+        if cp is None:
             cp = CcyPair.objects.get(name=ccy_pair)
             self.ccy_pairs[ccy_pair] = cp
 
@@ -1312,10 +1301,7 @@ class MktDataSet:
         self.ytss[ccy + " " + name] = yts
 
     def add_ccy_pair_with_trades(self, trades):
-        if isinstance(trades, list):
-            tradelist = trades
-        else:
-            tradelist = [trades]
+        tradelist = trades if isinstance(trades, list) else [trades]
         for t in tradelist:
             self.add_ccy_pair(t.ccy_pair, self.date)
             t.link_mktdataset(self)

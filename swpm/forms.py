@@ -82,7 +82,7 @@ class FXOUpperBarrierDetailForm(ModelForm):
     def clean(self):
         try:
             cd = super().clean()
-            if cd.get('rebate') and (bool(cd.get('rebate_ccy')) == False):
+            if cd.get('rebate') and not bool(cd.get('rebate_ccy')):
                 raise ValidationError(_('Missing rebate ccy.'),
                                       code='unmatch1')
         except KeyError:
@@ -106,7 +106,7 @@ class FXOLowerBarrierDetailForm(ModelForm):
     def clean(self):
         try:
             cd = super().clean()
-            if cd.get('rebate') and (bool(cd.get('rebate_ccy')) == False):
+            if cd.get('rebate') and not bool(cd.get('rebate_ccy')):
                 raise ValidationError(_('Missing rebate ccy.'),
                                       code='unmatch1')
         except KeyError:
@@ -161,12 +161,12 @@ class FXOForm(ModelForm):
                     raise ValidationError(
                         _('Strike and notionals do not match.'),
                         code='unmatch1')
-                cd.get('exercise_start') == None
-                cd.get('exercise_end') == None
+                cd.get('exercise_start') is None
+                cd.get('exercise_end') is None
             elif exercise_type == "AME":
-                if cd.get('exercise_start') == None:
+                if cd.get('exercise_start') is None:
                     cd['exercise_start'] = cd['trade_date']
-                if cd.get('exercise_end') == None:
+                if cd.get('exercise_end') is None:
                     cd['exercise_end'] = cd['maturity_date']
                 if cd['exercise_end'] < cd['exercise_start']:
                     raise ValidationError(_(
@@ -174,8 +174,6 @@ class FXOForm(ModelForm):
                     ),
                                           code='unmatch1')
             barrier = cd.get('barrier')
-            if barrier:
-                pass
         except KeyError:
             raise ValidationError(_('Fields not completed.'), code=KeyError)
 
